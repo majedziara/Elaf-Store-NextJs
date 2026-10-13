@@ -1,0 +1,81 @@
+--- a/app/Services/SettingService.php
++++ b/app/Services/SettingService.php
+@@ -10,7 +10,7 @@
+         Setting::updateOrCreate(['key'=>$key],['value'=>$value]);
+     }
+     public function publicSettings(): array {
+-        $keys=['brand_name','support_email','logo_path','shipping_policy','return_policy','checkout_enabled'];
++        $keys=['brand_name','support_email','logo_path','shipping_policy','return_policy','checkout_enabled','returns_enabled','exchanges_enabled','return_days'];
+         return collect($keys)->mapWithKeys(fn($k)=>[$k=>$this->get($k)])->all()+['currency'=>'USD','language'=>'en'];
+     }
+ }
+--- a/app/Models/ReturnRequest.php
++++ b/app/Models/ReturnRequest.php
+@@ -5,6 +5,8 @@
+ class ReturnRequest extends Model {
+     protected $table = 'return_requests';
+     protected $guarded = [];
++    protected $appends = ['photo_count'];
++    public function getPhotoCountAttribute(): int { return count($this->photo_paths ?? []); }
+ 
+     protected function casts(): array { return ['photo_paths' => 'array', 'exchange_reserved' => 'boolean', 'exchange_deducted' => 'boolean', 'restocked' => 'boolean', 'order_id' => 'integer']; }
+     public function order() { return $this->belongsTo(Order::class); }
+--- a/app/Http/Controllers/Api/CatalogController.php
++++ b/app/Http/Controllers/Api/CatalogController.php
+@@ -8,7 +8,7 @@
+ use Illuminate\Http\Request;
+ class CatalogController extends Controller {
+     public function index(Request $r,CatalogService $service) {
+-        $f=$r->validate(['q'=>'nullable|string|max:100','category'=>'nullable|string|max:160','collection'=>'nullable|string|max:160',
++        $f=$r->validate(['ids'=>'nullable|array|max:30','ids.*'=>'integer|min:1|distinct','q'=>'nullable|string|max:100','category'=>'nullable|string|max:160','collection'=>'nullable|string|max:160',
+             'color'=>'nullable|string|max:80','size'=>'nullable|string|max:30','min_cents'=>'nullable|integer|min:0|max:100000000',
+             'max_cents'=>'nullable|integer|min:0|max:100000000','in_stock'=>'nullable|boolean','sort'=>'nullable|in:newest,price_asc,price_desc','per_page'=>'nullable|integer|min:1|max:48']);
+         return ProductResource::collection($service->query($f)->paginate($f['per_page']??24)->withQueryString());
+--- a/app/Services/CatalogService.php
++++ b/app/Services/CatalogService.php
+@@ -5,6 +5,7 @@
+ final class CatalogService {
+     public function query(array $filters) {
+         $q=Product::with(['category','collections','images','variants','sizeGuide'])->where('status','published');
++        if(!empty($filters['ids'])) $q->whereIn('products.id',$filters['ids']);
+         if(!empty($filters['q'])) $q->where(function($q)use($filters){ $q->where('name','like','%'.$filters['q'].'%')->orWhere('description','like','%'.$filters['q'].'%'); });
+         if(!empty($filters['category'])) $q->whereHas('category',fn($c)=>$c->where('slug',$filters['category'])->where('is_active',true));
+         if(!empty($filters['collection'])) $q->whereHas('collections',fn($c)=>$c->where('slug',$filters['collection'])->where('is_active',true));
+--- a/config/store.php
++++ b/config/store.php
+@@ -3,6 +3,7 @@
+ return [
+     'frontend_url' => rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/'),
+     'currency' => 'USD',
++    'bff_rate_secret' => env('BFF_RATE_SECRET'),
+     'reservation_minutes' => 30,
+     'link_minutes' => 60,
+     'guest_access_minutes' => 30,
+--- a/app/Providers/AppServiceProvider.php
++++ b/app/Providers/AppServiceProvider.php
+@@ -8,13 +8,21 @@
+ use Illuminate\Auth\Notifications\ResetPassword;
+ class AppServiceProvider extends ServiceProvider {
+     public function register(): void {}
++    private function storeClientKey(Request $r): string {
++        $ip=(string)$r->header('X-NV-Client-IP'); $time=(string)$r->header('X-NV-Client-Time');
++        $signature=(string)$r->header('X-NV-Client-Signature'); $secret=(string)config('store.bff_rate_secret','');
++        if(preg_match('/^[a-f0-9]{64}$/iD',$secret) && filter_var($ip,FILTER_VALIDATE_IP) &&
++            ctype_digit($time) && strlen($time)<=12 && abs(time()-(int)$time)<=60 &&
++            preg_match('/^[a-f0-9]{64}$/iD',$signature) && hash_equals(hash_hmac('sha256',$ip.'|'.$time,$secret),$signature)) return $ip;
++        return (string)$r->ip();
++    }
+     public function boot(): void {
+         Gate::before(fn($user,$ability)=>$user->is_active && $user->hasRole('admin')?true:null);
+         ResetPassword::createUrlUsing(fn($user,$token)=>config('store.frontend_url').'/reset-password?token='.urlencode($token).'&email='.urlencode($user->email));
+-        RateLimiter::for('auth',fn(Request $r)=>[Limit::perMinute(20)->by($r->ip()),Limit::perMinute(5)->by(hash('sha256',strtolower((string)$r->input('email')).'|'.$r->ip()))]);
+-        RateLimiter::for('links',fn(Request $r)=>Limit::perMinute(3)->by($r->user()?->id??$r->ip()));
+-        RateLimiter::for('public-write',fn(Request $r)=>Limit::perMinute(20)->by($r->ip()));
+-        RateLimiter::for('payments',fn(Request $r)=>Limit::perMinute(10)->by($r->user('sanctum')?->id??$r->ip()));
++        RateLimiter::for('auth',fn(Request $r)=>[Limit::perMinute(20)->by($this->storeClientKey($r)),Limit::perMinute(5)->by(hash('sha256',strtolower((string)$r->input('email')).'|'.$this->storeClientKey($r)))]);
++        RateLimiter::for('links',fn(Request $r)=>Limit::perMinute(3)->by($r->user()?->id??$this->storeClientKey($r)));
++        RateLimiter::for('public-write',fn(Request $r)=>Limit::perMinute(20)->by($this->storeClientKey($r)));
++        RateLimiter::for('payments',fn(Request $r)=>Limit::perMinute(10)->by($r->user('sanctum')?->id??$this->storeClientKey($r)));
+         config(['queue.connections.database.retry_after'=>180]);
+     }
+ }

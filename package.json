@@ -1,26 +1,29 @@
 {
-  "name": "elaf-store",
-  "version": "0.1.0",
+  "name": "nella-and-vale",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "check": "tsc --noEmit",
+    "assets": "node scripts/write-assets.mjs",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs"
   },
   "dependencies": {
     "next": "16.4.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "motion": "14.1.0",
+    "lucide-react": "1.56.0",
+    "@radix-ui/react-dialog": "1.3.1",
+    "@radix-ui/react-alert-dialog": "1.2.1",
+    "server-only": "0.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/turbopack": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.4.0",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "5.9.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
   }
 }
