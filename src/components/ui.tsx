@@ -14,7 +14,7 @@ import {
 } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion, useScroll, useSpring } from "motion/react";
 import {
   X,
   ArrowRight,
@@ -86,22 +86,33 @@ export function LinkButton({
 export function Reveal({
   children,
   className = "",
+  delay = 0,
+  direction = "up",
 }: {
   children: ReactNode;
   className?: string;
+  delay?: number;
+  direction?: "up" | "left" | "right";
 }) {
   const reduced = useReducedMotion();
+  const offset = direction === "up" ? { y: 24, x: 0 } : { y: 0, x: direction === "left" ? -24 : 24 };
   return (
     <motion.div
       className={"reveal " + className}
-      initial={{ opacity: 0, y: reduced ? 0 : 12 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.1 }}
-      transition={{ duration: reduced ? 0.12 : 0.45, ease: [0.16, 1, 0.3, 1] }}
+      initial={{ opacity: 0, ...offset }}
+      whileInView={{ opacity: 1, y: 0, x: 0 }}
+      viewport={{ once: true, amount: 0.12 }}
+      transition={{ duration: reduced ? 0 : 0.7, delay: reduced ? 0 : delay, ease: [0.16, 1, 0.3, 1] }}
     >
       {children}
     </motion.div>
   );
+}
+export function ScrollProgress() {
+  const reduced = useReducedMotion();
+  const { scrollYProgress } = useScroll();
+  const progress = useSpring(scrollYProgress, { stiffness: 140, damping: 28, restDelta: 0.001 });
+  return <motion.div aria-hidden="true" className="scroll-progress" style={{ scaleX: reduced ? scrollYProgress : progress }} />;
 }
 export function Photo({
   src,
@@ -166,11 +177,11 @@ export function PageHeading({
 }) {
   return (
     <header className="page-heading">
-      <div>
+      <Reveal>
         {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
         {children ? <div className="muted measure">{children}</div> : null}
-      </div>
+      </Reveal>
       {action}
     </header>
   );

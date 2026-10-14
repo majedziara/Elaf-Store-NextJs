@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MotionConfig } from "motion/react";
+import { AnimatePresence, motion, MotionConfig, useReducedMotion } from "motion/react";
 import { api } from "@/lib/api";
 import type { Cart, Settings, User } from "@/lib/types";
 type Store = {
@@ -34,6 +34,7 @@ export function Providers({
     [authLoading, setAuthLoading] = useState(true),
     [cart, setCart] = useState<Cart | null>(null),
     [notice, setNotice] = useState("");
+  const reduced = useReducedMotion();
   const adding = useRef(false);
   const refreshUser = async () => {
     try {
@@ -116,8 +117,15 @@ export function Providers({
         }}
       >
         {children}
-        <div className="toast" role="status" aria-live="polite">
-          {notice}
+        <div className="toast-region" role="status" aria-live="polite" aria-atomic="true">
+          <AnimatePresence initial={false}>
+            {notice ? (
+              <motion.div className="toast" key={notice} initial={reduced ? false : { opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: reduced ? 0 : 8 }} transition={{ duration: reduced ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}>
+                <span className="toast-mark" aria-hidden="true">✓</span>
+                {notice}
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </Context.Provider>
     </MotionConfig>

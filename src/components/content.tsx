@@ -12,6 +12,7 @@ import {
 } from "@/lib/types";
 import { useStore } from "./providers";
 import { ProductGrid } from "./catalog";
+import { HomeHero, BrandRibbon } from "./home-motion";
 import {
   PageHeading,
   Reveal,
@@ -33,75 +34,48 @@ export function Home({
 }) {
   return (
     <>
-      <section className="hero">
-        <div className="container hero-grid">
-          <Reveal className="hero-copy">
-            <p className="eyebrow">Everyday, considered</p>
-            <h1>Good days start with what you wear.</h1>
-            <p>
-              Find your own rhythm in everyday clothing and intimates. Choose
-              the pieces that feel like you.
-            </p>
-            <div className="actions">
-              <LinkButton href="/new-arrivals">Shop new arrivals</LinkButton>
-              <LinkButton href="/intimates" variant="secondary">
-                Explore intimates
-              </LinkButton>
-            </div>
-          </Reveal>
-          <Reveal className="hero-picture">
-            <Photo
-              src="/images/editorial-hero.png"
-              alt="Editorial portrait in warm afternoon light"
-              priority
-            />
-            <div className="hero-detail">
-              <Photo
-                src="/images/editorial-detail.png"
-                alt="A close view of soft fabric texture"
-              />
-            </div>
-          </Reveal>
-        </div>
-      </section>
+      <HomeHero />
+      <BrandRibbon />
       <div className="container">
         <div className="values">
-          <div>
+          <Reveal delay={0}>
             <h3>Your colour, your size</h3>
             <p>
               Choose a specific selection and see its availability before adding
               it to your bag.
             </p>
-          </div>
-          <div>
+          </Reveal>
+          <Reveal delay={0.08}>
             <h3>A clear checkout</h3>
             <p>
               Review shipping, discounts, and tax before continuing to payment.
             </p>
-          </div>
-          <div>
+          </Reveal>
+          <Reveal delay={0.16}>
             <h3>Keep your favourites close</h3>
             <p>
               Save the pieces you love and come back to them in your wishlist.
             </p>
-          </div>
+          </Reveal>
         </div>
-        <section className="section">
-          <div className="section-title">
+        <section className="section" id="latest-edit">
+          <Reveal className="section-title">
             <div>
               <p className="eyebrow">The latest edit</p>
               <h2>New arrivals</h2>
             </div>
             <Link href="/new-arrivals">Explore the collection ↗</Link>
-          </div>
+          </Reveal>
           <ProductGrid products={products.slice(0, 8)} />
         </section>
         <section className="editorial-band">
-          <Photo
-            src="/images/editorial-hero.png"
-            alt="Everyday clothing editorial"
-          />
-          <div className="editorial-copy">
+          <Reveal className="editorial-visual">
+            <Photo
+              src="/images/editorial-hero.png"
+              alt="Everyday clothing editorial"
+            />
+          </Reveal>
+          <Reveal className="editorial-copy" delay={0.12}>
             <p className="eyebrow">Chapter one</p>
             <h2>Everyday clothing</h2>
             <p className="muted">
@@ -109,10 +83,10 @@ export function Home({
               the clothing collection at your own pace.
             </p>
             <LinkButton href="/clothing">Shop clothing</LinkButton>
-          </div>
+          </Reveal>
         </section>
         <section className="editorial-band reverse">
-          <div className="editorial-copy">
+          <Reveal className="editorial-copy" delay={0.12}>
             <p className="eyebrow">Chapter two</p>
             <h2>Intimates, your way</h2>
             <p className="muted">
@@ -120,11 +94,13 @@ export function Home({
               compare sizes, and choose your fit.
             </p>
             <LinkButton href="/intimates">Shop intimates</LinkButton>
-          </div>
-          <Photo
-            src="/images/editorial-detail.png"
-            alt="Fabric detail for the intimates collection"
-          />
+          </Reveal>
+          <Reveal className="editorial-visual">
+            <Photo
+              src="/images/editorial-detail.png"
+              alt="Fabric detail for the intimates collection"
+            />
+          </Reveal>
         </section>
         {home ? (
           <section className="section">

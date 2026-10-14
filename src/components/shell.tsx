@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -14,7 +15,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { useStore } from "./providers";
-import { Logo, Drawer, LinkButton, Photo, Button, Errors } from "./ui";
+import { Logo, Drawer, LinkButton, Photo, Button, Errors, ScrollProgress } from "./ui";
 import { money } from "@/lib/types";
 import { useAction } from "@/lib/api";
 const navigation = [
@@ -27,6 +28,7 @@ const navigation = [
 export function ShopShell({ children }: { children: React.ReactNode }) {
   const store = useStore(),
     path = usePathname();
+  const reduced = useReducedMotion();
   const [panel, setPanel] = useState("");
   const [q, setQ] = useState("");
   const router = useRouter();
@@ -40,6 +42,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
       <a className="skip" href="#main">
         Skip to content
       </a>
+      <ScrollProgress />
       <div className="announcement">
         Everyday clothing & intimates · US orders in USD
       </div>
@@ -85,7 +88,11 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
               aria-label={`Shopping bag, ${count} items`}
             >
               <ShoppingBag />
-              {count > 0 ? <span>{count}</span> : null}
+              <AnimatePresence initial={false}>
+                {count > 0 ? (
+                  <motion.span key={count} initial={reduced ? false : { scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: reduced ? 1 : 0.6, opacity: 0 }} transition={{ type: "spring", stiffness: 450, damping: 22 }}>{count}</motion.span>
+                ) : null}
+              </AnimatePresence>
             </button>
             <Link
               className="icon-button"
@@ -97,7 +104,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <main id="main">{children}</main>
+      <main id="main"><div key={path} className="page-transition">{children}</div></main>
       <footer className="site-footer">
         <div className="container footer-grid">
           <div>
