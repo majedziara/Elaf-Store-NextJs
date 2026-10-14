@@ -88,8 +88,8 @@ export function ProductCard({ product }: { product: Product }) {
 export function ProductGrid({ products }: { products: Product[] }) {
   return products.length ? (
     <div className="product-grid">
-      {products.map((p) => (
-        <Reveal key={p.id}>
+      {products.map((p, index) => (
+        <Reveal key={p.id} delay={(index % 4) * 0.075}>
           <ProductCard product={p} />
         </Reveal>
       ))}
