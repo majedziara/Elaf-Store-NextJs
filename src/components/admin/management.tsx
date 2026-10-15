@@ -33,153 +33,28 @@ import {
 import { AddressView } from "../account";
 import { OrdersTable } from "./operations";
 export function Gateways() {
-  const r = useResource<{ data: Row[] }>("admin/gateways");
-  return (
-    <>
-      <PageHeading eyebrow="Store settings" title="Payment gateways">
-        Only implemented and enabled payment methods appear at checkout.
-      </PageHeading>
-      <ResourceState {...r} />
-      <div className="stack">
-        {r.data?.data.map((g) =>
-          g.slug === "paypal" ? (
-            <PayPalSettings key={str(g.slug)} gateway={g} reload={r.reload} />
-          ) : (
-            <div className="payment-card" key={str(g.slug)}>
-              <div className="spread">
-                <h3>{str(g.name)}</h3>
-                <Badge value="Integration pending" />
-              </div>
-              <p className="muted">
-                This payment adapter has not been implemented. It remains
-                disabled and cannot accept store payments.
-              </p>
-            </div>
-          ),
-        )}
-      </div>
-    </>
-  );
-}
-function PayPalSettings({
-  gateway,
-  reload,
-}: {
-  gateway: Row;
-  reload: () => void;
-}) {
-  const a = useAction(),
-    [env, setEnv] = useState(str(gateway.environment) || "sandbox"),
-    [enabled, setEnabled] = useState(!!gateway.enabled);
-  const [credentials, setCredentials] = useState<Record<string, string>>({
-    client_id: "",
-    client_secret: "",
-    merchant_id: "",
-    webhook_id: "",
-  });
-  useEffect(() => {
-    setEnv(str(gateway.environment));
-    setEnabled(!!gateway.enabled);
-  }, [gateway]);
-  const configured =
-    (gateway.configured_fields as Record<string, string[]>) || {};
-  return (
-    <div className="payment-card">
-      <div className="spread">
-        <h3>PayPal</h3>
-        <div className="actions">
-          <Badge value={gateway.enabled ? "enabled" : "disabled"} />
-          <Badge value={gateway.environment} />
-        </div>
-      </div>
-      <p className="muted">
-        Stored secrets are never displayed. Leave fields empty to preserve
-        existing values or use server environment settings.
-      </p>
-      <Form
-        error={a.error}
-        busy={a.busy}
-        message={a.message}
-        onSubmit={(e) => {
-          e.preventDefault();
-          const fields = Object.fromEntries(
-            Object.entries(credentials).filter(([, v]) => v.trim()),
-          );
-          const body = {
-            enabled,
-            environment: env,
-            ...(Object.keys(fields).length
-              ? { credentials: { [env]: fields } }
-              : {}),
-          };
-          void a.run(async () => {
-            await api("admin/gateways/paypal", { method: "PUT", body });
-            setCredentials({
-              client_id: "",
-              client_secret: "",
-              merchant_id: "",
-              webhook_id: "",
-            });
-            reload();
-          }, "PayPal settings saved. Validate them with a real sandbox checkout.");
-        }}
-      >
-        <SelectField
-          label="Environment"
-          value={env}
-          onChange={(e) => {
-            setEnv(e.target.value);
-            setCredentials({
-              client_id: "",
-              client_secret: "",
-              merchant_id: "",
-              webhook_id: "",
-            });
-          }}
-        >
-          <option value="sandbox">Sandbox</option>
-          <option value="live">Live</option>
-        </SelectField>
-        {env === "live" ? (
-          <Notice>
-            Live payments move real money. Use credentials and a webhook
-            subscription for your live merchant account.
-          </Notice>
-        ) : null}
-        <Check checked={enabled} onChange={(e) => setEnabled(e.target.checked)}>
-          Enable new PayPal payments
-        </Check>
-        <div className="form-grid">
-          {[
-            ["client_id", "Client ID"],
-            ["client_secret", "Client secret"],
-            ["merchant_id", "Merchant ID"],
-            ["webhook_id", "Webhook subscription ID"],
-          ].map(([key, name]) => (
-            <InputField
-              key={key}
-              label={name}
-              type={key === "client_secret" ? "password" : "text"}
-              autoComplete="off"
-              value={credentials[key]}
-              maxLength={
-                key === "merchant_id" ? 80 : key === "webhook_id" ? 120 : 255
-              }
-              placeholder={
-                configured[env]?.includes(key)
-                  ? "Configured — leave blank to keep"
-                  : "Not stored here"
-              }
-              onChange={(e) =>
-                setCredentials({ ...credentials, [key]: e.target.value })
-              }
-            />
-          ))}
-        </div>
-        <Button busy={a.busy}>Save PayPal settings</Button>
-      </Form>
-    </div>
-  );
+  const resource = useResource<{ data: Row[] }>("admin/gateways");
+  return <>
+    <PageHeading eyebrow="Store settings" title="Payment gateways">
+      Gateways appear automatically when their active environment is fully configured.
+    </PageHeading>
+    <ResourceState {...resource} />
+    <div className="stack">{resource.data?.data.map(gateway => <div className="payment-card" key={str(gateway.slug)}>
+      <div className="spread"><h3>{str(gateway.name)}</h3><div className="actions"><Badge value={gateway.enabled ? "Available" : "Unavailable"} /><Badge value={gateway.environment} /></div></div>
+      <p className="muted">Managed in Laravel .env. Set {str(gateway.mode_key)} to sandbox or live, then reload Laravel configuration. Secrets are never sent to the browser.</p>
+      {["sandbox", "live"].map(environment => {
+        const configuration = (gateway.environments as Record<string, Row>)?.[environment];
+        const webhook = (gateway.webhook_urls as Record<string, string>)?.[environment];
+        return <div className="stack" key={environment}>
+          <div className="spread"><strong>{environment === "live" ? "Live" : "Sandbox"}</strong><Badge value={configuration?.ready ? "Configured" : "Incomplete"} /></div>
+          <p className="muted" style={{ overflowWrap: "anywhere" }}>Environment keys: {Array.isArray(configuration?.env_keys) ? configuration.env_keys.join(", ") : ""}</p>
+          {Array.isArray(configuration?.missing) && configuration.missing.length ? <Notice>Missing: {configuration.missing.join(", ")}</Notice> : null}
+          <p className="muted" style={{ overflowWrap: "anywhere" }}>Webhook URL: {webhook}</p>
+        </div>;
+      })}
+      {gateway.slug === "triple-a" ? <Notice>Triple-A sandbox uses testBTC. USDT and other live currencies depend on your merchant account. Refunds stay pending until the recipient completes the wallet flow and Triple-A confirms the transfer.</Notice> : null}
+    </div>)}</div>
+  </>;
 }
 export function StoreSettings() {
   const r = useResource<{ data: Row[] }>("admin/settings"),
@@ -708,8 +583,8 @@ export function Team() {
                         roles: e.target.checked
                           ? [...(member.roles as string[]), role]
                           : (member.roles as string[]).filter(
-                              (x) => x !== role,
-                            ),
+                            (x) => x !== role,
+                          ),
                       })
                     }
                   >

@@ -8,8 +8,8 @@
   --paper: #fffdf9;
   --error: #a42e35;
   --success: #3b674a;
-  --serif: Newsreader, Georgia, serif;
-  --sans: Manrope, Arial, sans-serif;
+  --serif: var(--font-newsreader), Georgia, serif;
+  --sans: var(--font-manrope), Arial, sans-serif;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 * {

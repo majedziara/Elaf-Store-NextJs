@@ -151,9 +151,9 @@ export const money = (n: unknown) =>
 export const date = (s: unknown) =>
   s
     ? new Intl.DateTimeFormat("en-US", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(String(s)))
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(String(s)))
     : "—";
 export const str = (v: unknown) =>
   v === undefined || v === null ? "" : String(v);
@@ -181,7 +181,7 @@ export function mediaURL(value: string | null | undefined): string {
       !url.password
     )
       return url.href;
-  } catch {}
+  } catch { }
   return "/images/product-placeholder.svg";
 }
 export function safeHttps(value: unknown): string | null {
@@ -201,4 +201,21 @@ export function paypalURL(value: unknown): string | null {
   return ["www.paypal.com", "www.sandbox.paypal.com"].includes(u.hostname)
     ? url
     : null;
+}
+
+export type PaymentGateway = "paypal" | "stripe" | "triple-a";
+export const gatewayNames: Record<PaymentGateway, string> = {
+  paypal: "PayPal", stripe: "Stripe", "triple-a": "Crypto / Triple-A",
+};
+export function paymentURL(gateway: unknown, value: unknown): string | null {
+  const url = safeHttps(value);
+  if (!url || !Object.hasOwn(gatewayNames, str(gateway))) return null;
+  const parsed = new URL(url);
+  if (parsed.port && parsed.port !== "443") return null;
+  const hosts: Record<PaymentGateway, string[]> = {
+    paypal: ["www.paypal.com", "www.sandbox.paypal.com"],
+    stripe: ["checkout.stripe.com"],
+    "triple-a": ["triple-a.io", "www.triple-a.io", "cdn.triple-a.io", "pay.triple-a.io"],
+  };
+  return hosts[gateway as PaymentGateway].includes(parsed.hostname) ? url : null;
 }

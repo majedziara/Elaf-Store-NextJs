@@ -203,3 +203,78 @@ test("email alias validation rejects incomplete, oversized, or duplicate tokens 
   }
   assert.equal(mailLink(request({ token: grantToken }), "reset-password").status, 400);
 });
+
+const { paymentCallback } = loadSource("src/lib/callbacks.ts");
+const { paymentURL } = loadSource("src/lib/types.ts");
+const { forwardPaymentWebhook } = loadSource("src/lib/webhooks.ts");
+for (const gateway of ["stripe", "triple-a"]) {
+  test(`${gateway} callback forwards protected state and ignores browser payment claims`, async () => {
+    let forwarded;
+    const response = await withFetch(async (url) => { forwarded = new URL(url); return result(); }, () => paymentCallback(request({state:"protected", status:"paid", amount:"0.01", order:"forged"}), gateway, "return"));
+    assert.equal(forwarded.pathname, `/api/payments/${gateway}/return`);
+    assert.deepEqual([...forwarded.searchParams.entries()], [["state", "protected"]]);
+    assert.equal(location(response).pathname, "/checkout/confirmed");
+    assert.equal(location(response).searchParams.get("order"), uuid);
+    assert.ok(response.cookies.get(cookieNames.orders));
+  });
+  test(`${gateway} cancel uses verified pending state`, async () => {
+    const response = await withFetch(async () => result("pending", true), () => paymentCallback(request({state:"protected"}), gateway, "cancel"));
+    assert.equal(location(response).pathname, "/checkout/pending");
+    assert.equal(location(response).searchParams.get("returned"), "cancel");
+  });
+}
+test("unknown gateways and actions cannot reach the backend", async () => {
+  await withFetch(async () => {throw new Error("Unexpected upstream request");}, async () => {
+    assert.equal((await paymentCallback(request({state:"protected"}), "bank-of-palestine", "return")).status, 404);
+    assert.equal((await paymentCallback(request({state:"protected"}), "stripe", "capture")).status, 404);
+  });
+});
+test("payment redirects allow only provider-owned HTTPS hosts", () => {
+  assert.ok(paymentURL("stripe", "https://checkout.stripe.com/c/pay/cs_test_1"));
+  assert.ok(paymentURL("triple-a", "https://triple-a.io/app/v1/payment_form?access_token=payment-token"));
+  for (const value of ["https://checkout.stripe.com.attacker.invalid/pay", "http://checkout.stripe.com/pay", "https://user:password@checkout.stripe.com/pay", "https://checkout.stripe.com:444/pay", "javascript:alert(1)"])
+    assert.equal(paymentURL("stripe", value), null);
+  assert.equal(paymentURL("stripe", "https://www.paypal.com/checkoutnow"), null);
+  assert.equal(paymentURL("unknown", "https://checkout.stripe.com"), null);
+});
+test("webhook proxy preserves raw signed bytes without browser cookies", async () => {
+  const body = '{ "id": "event", "amount": 3900 }\n';
+  let captured;
+  const req = new NextRequest("http://localhost:3000/api/v1/webhooks/stripe/sandbox", {method:"POST", headers:{"Stripe-Signature":"t=1,v1=signed", Cookie:"secret=session", Origin:"https://provider.invalid"}, body});
+  const response = await withFetch(async (url, options) => {captured={url, options};return new Response('private upstream body', {status:200});}, () => forwardPaymentWebhook(req, "stripe", "sandbox"));
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "");
+  assert.equal(captured.url, "http://127.0.0.1:8000/api/v1/webhooks/stripe/sandbox");
+  assert.equal(captured.options.body.toString(), body);
+  assert.equal(captured.options.headers.get("Stripe-Signature"), "t=1,v1=signed");
+  assert.equal(captured.options.headers.get("Cookie"), null);
+  assert.equal(captured.options.headers.get("Origin"), null);
+  assert.equal(captured.options.redirect, "manual");
+});
+test("webhook proxy rejects missing signatures, unsupported targets and oversized bodies", async () => {
+  const make = (body="{}", signature="") => new NextRequest("http://localhost:3000/api/v1/webhooks/stripe/sandbox", {method:"POST", body, headers:signature ? {"Stripe-Signature":signature} : {}});
+  await withFetch(async () => {throw new Error("Unexpected upstream request");}, async () => {
+    assert.equal((await forwardPaymentWebhook(make(), "stripe", "sandbox")).status, 400);
+    assert.equal((await forwardPaymentWebhook(make(), "2checkout", "sandbox")).status, 404);
+    assert.equal((await forwardPaymentWebhook(make(), "stripe", "other")).status, 404);
+    assert.equal((await forwardPaymentWebhook(make("x".repeat(262145), "signature"), "stripe", "sandbox")).status, 413);
+  });
+});
+test("provider retries are preserved when the backend cannot process a webhook", async () => {
+  const req = new NextRequest("http://localhost:3000/api/v1/webhooks/triple-a/live", {method:"POST", body:"{}", headers:{"Triplea-Signature":"signature"}});
+  const response = await withFetch(async () => new Response(null, {status:503}), () => forwardPaymentWebhook(req, "triple-a", "live"));
+  assert.equal(response.status, 502);
+});
+
+const { bridge } = loadSource("src/lib/bridge.ts");
+for (const gateway of ["stripe", "triple-a"]) {
+  test(`BFF allowlist forwards ${gateway} payment start and its private order grant`, async () => {
+    const granted = seal([{uuid, token: grantToken, expires:Date.now()+1800000}]);
+    const req = new NextRequest(`http://localhost:3000/api/store/orders/${uuid}/payments/${gateway}`, {method:"POST", headers:{Origin:"http://localhost:3000", "X-Store-Request":"1", Cookie:`${cookieNames.orders}=${granted}`}});
+    let forwarded;
+    const response = await withFetch(async (url, options) => {forwarded={url,options};return Response.json({data:{status:"awaiting_approval"}});}, () => bridge(req, ["orders",uuid,"payments",gateway]));
+    assert.equal(response.status, 200);
+    assert.equal(forwarded.url, `http://127.0.0.1:8000/api/v1/orders/${uuid}/payments/${gateway}`);
+    assert.equal(forwarded.options.headers.get("X-Order-Token"), grantToken);
+  });
+}

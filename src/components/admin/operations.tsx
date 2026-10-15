@@ -770,7 +770,7 @@ function RefundForm({ order, reload }: { order: Order; reload: () => void }) {
         busy={a.busy}
         onConfirm={submit}
       >
-        This submits a financial refund to PayPal for order {order.reference}.
+        This submits a financial refund to the original payment provider for order {order.reference}.
         Review the amount and reason before confirming.
       </Confirm>
     </div>
@@ -1091,7 +1091,7 @@ export function Payments() {
                               }, "")
                             }
                           >
-                            This reviews PayPal and may capture an approved
+                            This verifies the original payment provider and may capture an approved PayPal
                             payment. It does not mark the order paid manually.
                           </Confirm>
                         </td>

@@ -9,9 +9,9 @@ export function proxy(request: NextRequest) {
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: blob: ${media}`,
+    `img-src 'self' data: blob: ${media} https://www.googletagmanager.com https://*.google-analytics.com`,
     "font-src 'self'",
-    `connect-src 'self'${dev ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com${dev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",
@@ -30,6 +30,6 @@ export function proxy(request: NextRequest) {
 }
 export const config = {
   matcher: [
-    "/((?!api/|_next/|images/|fonts/|favicon.ico|robots.txt|sitemap.xml).*)",
+    "/((?!api/|_next/|images/|fonts/|favicon.ico|robots.txt|sitemap.xml|googledb9beca33381b118\\.html).*)",
   ],
 };

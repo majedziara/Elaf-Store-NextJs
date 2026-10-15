@@ -118,24 +118,28 @@ export function Photo({
   src,
   alt,
   priority = false,
+  sizes = "(max-width: 600px) 50vw, (max-width: 1000px) 33vw, 25vw",
   className = "",
 }: {
   src?: string | null;
   alt: string;
   priority?: boolean;
+  sizes?: string;
   className?: string;
 }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);
+  const imageSource = failed ? "/images/product-placeholder.svg" : mediaURL(src);
   return (
     <div className={`photo ${className}`}>
       <Image
-        src={failed ? "/images/product-placeholder.svg" : mediaURL(src)}
+        src={imageSource}
         alt={alt}
         fill
-        sizes="(max-width: 600px) 50vw, (max-width: 1000px) 33vw, 25vw"
-        priority={priority}
-        unoptimized
+        sizes={sizes}
+        preload={priority}
+        quality={90}
+        unoptimized={imageSource.startsWith("http://127.0.0.1") || imageSource.startsWith("http://localhost")}
         onError={() => setFailed(true)}
       />
     </div>
@@ -143,6 +147,7 @@ export function Photo({
 }
 export function Logo({ inverse = false }: { inverse?: boolean }) {
   const store = useStore();
+  const logo = store.settings.logo_path ? mediaURL(store.settings.logo_path) : "/images/logo.png";
   return (
     <Link
       href="/"
@@ -150,16 +155,14 @@ export function Logo({ inverse = false }: { inverse?: boolean }) {
       className={`logo ${inverse ? "inverse" : ""}`}
     >
       <Image
-        src={
-          store.settings.logo_path
-            ? mediaURL(store.settings.logo_path)
-            : "/images/logo.png"
-        }
+        src={logo}
+        unoptimized={logo.startsWith("http://127.0.0.1") || logo.startsWith("http://localhost")}
         alt="Nella & Vale"
-        unoptimized
+        quality={90}
         width={240}
-        height={84}
-        priority
+        height={80}
+        sizes="(max-width: 1000px) 145px, 170px"
+        loading="eager"
       />
     </Link>
   );
