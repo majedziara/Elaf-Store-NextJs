@@ -26,12 +26,16 @@ const Context = createContext<Store | null>(null);
 export function Providers({
   children,
   settings,
+  hasSession = true,
+  hasCart = true,
 }: {
   children: ReactNode;
   settings: Settings;
+  hasSession?: boolean;
+  hasCart?: boolean;
 }) {
   const [user, setUser] = useState<User | null>(null),
-    [authLoading, setAuthLoading] = useState(true),
+    [authLoading, setAuthLoading] = useState(hasSession),
     [cart, setCart] = useState<Cart | null>(null),
     [notice, setNotice] = useState("");
   const reduced = useReducedMotion();
@@ -53,9 +57,10 @@ export function Providers({
     }
   };
   useEffect(() => {
-    void refreshUser();
-    void refreshCart();
-  }, []);
+    if (hasSession) void refreshUser();
+    else setAuthLoading(false);
+    if (hasCart) void refreshCart();
+  }, [hasSession, hasCart]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(""), 5000);

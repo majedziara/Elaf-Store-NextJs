@@ -14,8 +14,8 @@ for (const status of [undefined, "pending", "unknown", "approved", "failed", "re
     assert.notEqual(paymentPresentation(status).title, "Your order is confirmed");
   });
 }
-test("returning from PayPal preserves unresolved payment status", () => {
-  assert.equal(paymentPresentation("unknown", true).title, "You returned from PayPal");
+test("returning from checkout preserves unresolved payment status", () => {
+  assert.equal(paymentPresentation("unknown", true).title, "You returned from checkout");
   assert.equal(paymentPresentation("unknown", true).confirmed, false);
 });
 test("full refunds and reversals override a checkout confirmation route", () => {

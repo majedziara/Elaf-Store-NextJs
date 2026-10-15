@@ -19,7 +19,9 @@ import {
   money,
   states,
   str,
-  paypalURL,
+  paymentURL,
+  gatewayNames,
+  type PaymentGateway,
   rows,
 } from "@/lib/types";
 import { useStore } from "./providers";
@@ -269,6 +271,32 @@ export function TotalsView({ value }: { value: Totals }) {
     </>
   );
 }
+function PaymentMethods({ methods, selected, onChange }: {
+  methods: Row[];
+  selected: string;
+  onChange: (gateway: string) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Payment method">
+      {methods.map((payment) => (
+        <label className="method-option" key={str(payment.slug)}>
+          <input
+            type="radio"
+            name="payment_gateway"
+            value={str(payment.slug)}
+            checked={selected === payment.slug}
+            onChange={() => onChange(str(payment.slug))}
+            required
+          />
+          <span>
+            {str(payment.name)}
+            {payment.environment === "sandbox" ? " · Sandbox" : ""}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
 export function CheckoutView() {
   const store = useStore(),
     router = useRouter(),
@@ -278,6 +306,7 @@ export function CheckoutView() {
     [billing, setBilling] = useState<Address>(blankAddress),
     [same, setSame] = useState(true),
     [method, setMethod] = useState(""),
+    [gateway, setGateway] = useState(""),
     [coupon, setCoupon] = useState(""),
     [terms, setTerms] = useState(false),
     [quote, setQuote] = useState<Totals | null>(null),
@@ -289,9 +318,12 @@ export function CheckoutView() {
     if (store.user?.email) setEmail(store.user.email);
   }, [store.user?.email]);
   const methods = useResource<{ data: Row[] }>(
-      shipping.state ? "shipping-methods?state=" + shipping.state : null,
-    ),
+    shipping.state ? "shipping-methods?state=" + shipping.state : null,
+  ),
     payments = useResource<{ data: Row[] }>("payment-methods");
+  const selectedGateway = payments.data?.data.some((payment) => payment.slug === gateway)
+    ? gateway
+    : str(payments.data?.data[0]?.slug);
   const addresses = useResource<{ data: Address[] }>(
     store.user ? "account/addresses" : null,
   );
@@ -309,7 +341,7 @@ export function CheckoutView() {
     const intent =
       (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ||
       "quote";
-    if (intent === "pay" && !currentQuote) return;
+    if (intent === "pay" && (!currentQuote || !selectedGateway)) return;
     await a.run(async () => {
       if (intent === "quote") {
         const result = await api<{ data: Totals }>("checkout/quote", {
@@ -343,7 +375,7 @@ export function CheckoutView() {
           frozen.current = null;
         throw error;
       }
-      router.push("/checkout/pending?order=" + order.uuid);
+      router.push("/checkout/pending?order=" + order.uuid + "&gateway=" + encodeURIComponent(selectedGateway));
       await store.refreshCart();
       router.refresh();
     }, "");
@@ -478,16 +510,22 @@ export function CheckoutView() {
             <section className="checkout-section">
               <h2>Payment</h2>
               <ResourceState {...payments} />
-              {payments.data?.data.some((p) => p.slug === "paypal") ? (
+              <PaymentMethods
+                methods={payments.data?.data || []}
+                selected={selectedGateway}
+                onChange={setGateway}
+              />
+              {selectedGateway ? (
                 <Notice>
-                  You’ll review your order, then continue to PayPal to approve
-                  payment.
+                  Continue to {gatewayNames[selectedGateway as PaymentGateway]} to
+                  complete your payment securely.
+                  {selectedGateway === "triple-a"
+                    ? " The payment page shows the available currencies, network and exact amount. Wait for store confirmation before closing checkout."
+                    : ""}
                 </Notice>
-              ) : (
-                <Notice tone="error">
-                  Payments are currently unavailable.
-                </Notice>
-              )}
+              ) : payments.data ? (
+                <Notice tone="error">Payments are currently unavailable.</Notice>
+              ) : null}
               <InputField
                 label="Discount code (optional)"
                 name="coupon_code"
@@ -550,7 +588,7 @@ export function CheckoutView() {
                   disabled={
                     !currentQuote ||
                     !terms ||
-                    !payments.data?.data.some((p) => p.slug === "paypal")
+                    !selectedGateway
                   }
                 >
                   Place order & continue
@@ -560,7 +598,7 @@ export function CheckoutView() {
           </div>
           <p className="secure-note">
             <LockKeyhole size={16} /> Payment is confirmed by the store after
-            verification with PayPal.
+            verification with the payment provider.
           </p>
         </Form>
         <aside className="summary-card">
@@ -599,17 +637,30 @@ export function CheckoutView() {
 export function PaymentView({
   orderUUID,
   mode,
+  initialGateway = "",
 }: {
   orderUUID: string;
   mode: string;
+  initialGateway?: string;
 }) {
   const r = useResource<{ data: Order }>(
-      orderUUID ? "orders/" + orderUUID : null,
-    ),
+    orderUUID ? "orders/" + orderUUID : null,
+  ),
     a = useAction(),
     router = useRouter();
   const [attempt, setAttempt] = useState<Row | null>(null),
-    [approved, setApproved] = useState("");
+    [approved, setApproved] = useState(""),
+    [gateway, setGateway] = useState(initialGateway);
+  const methods = useResource<{ data: Row[] }>("payment-methods");
+  const persistedGateway = str(
+    r.data?.data.payments?.at(-1)?.gateway || attempt?.gateway,
+  );
+  const selectedGateway = persistedGateway || (
+    methods.data?.data.some((payment) => payment.slug === gateway)
+      ? gateway
+      : str(methods.data?.data[0]?.slug)
+  );
+  const gatewayName = gatewayNames[selectedGateway as PaymentGateway] || "payment provider";
   const automatic = useRef(false);
   useEffect(() => {
     if (!orderUUID) return;
@@ -631,11 +682,11 @@ export function PaymentView({
   const start = () =>
     a.run(async () => {
       const j = await api<{ data: Row }>(
-        "orders/" + orderUUID + "/payments/paypal",
+        "orders/" + orderUUID + "/payments/" + selectedGateway,
         { method: "POST" },
       );
       setAttempt(j.data);
-      const u = paypalURL(j.data.approval_url);
+      const u = paymentURL(j.data.gateway, j.data.approval_url);
       if (u) {
         setApproved(u);
         window.location.assign(u);
@@ -680,16 +731,31 @@ export function PaymentView({
             {attempt ? (
               <p className="muted">Payment status: {str(attempt.status)}</p>
             ) : null}
+            {!paid &&
+              !persistedGateway &&
+              !["expired", "canceled", "reversed", "refunded", "failed"].includes(order.payment_status) ? (
+              <div className="stack" style={{ textAlign: "left" }}>
+                <ResourceState {...methods} />
+                <PaymentMethods
+                  methods={methods.data?.data || []}
+                  selected={selectedGateway}
+                  onChange={setGateway}
+                />
+                {methods.data && !methods.data.data.length ? (
+                  <Notice>Payments are currently unavailable.</Notice>
+                ) : null}
+              </div>
+            ) : null}
             <div className="actions">
               {!paid &&
-              !["expired", "canceled", "reversed", "refunded"].includes(
-                order.payment_status,
-              ) ? (
+                !["expired", "canceled", "reversed", "refunded", "failed"].includes(
+                  order.payment_status,
+                ) ? (
                 <>
-                  <Button busy={a.busy} onClick={start}>
-                    Continue to PayPal
+                  <Button busy={a.busy} disabled={!selectedGateway} onClick={start}>
+                    Continue to {gatewayName}
                   </Button>
-                  {mode === "return" ? (
+                  {persistedGateway ? (
                     <Button
                       variant="secondary"
                       busy={a.busy}
@@ -703,7 +769,7 @@ export function PaymentView({
                         }, "")
                       }
                     >
-                      Check approved payment
+                      Check payment
                     </Button>
                   ) : null}
                 </>
@@ -725,7 +791,7 @@ export function PaymentView({
             </div>
             {approved ? (
               <a href={approved} rel="noreferrer">
-                Open PayPal again
+                Open {gatewayName} again
               </a>
             ) : null}
           </>

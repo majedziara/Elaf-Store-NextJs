@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
+import { siteUrl } from "@/lib/seo";
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.APP_URL || "http://localhost:3000";
+  const base = siteUrl;
   return {
     rules: {
       userAgent: "*",
@@ -8,6 +9,8 @@ export default function robots(): MetadataRoute.Robots {
       disallow: [
         "/api/",
         "/admin",
+        "/admin-sign-in",
+        "/search",
         "/account",
         "/orders/",
         "/checkout",

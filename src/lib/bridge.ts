@@ -1,4 +1,5 @@
 import "server-only";
+import { revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { config, cookieNames, seal, unseal, isLaravelCookie } from "./server";
 import { createHmac } from "node:crypto";
@@ -34,7 +35,7 @@ const routes: [string, string][] = [
   ],
   [
     "POST",
-    `orders/${uuid}/cancel|orders/${uuid}/payments/paypal|orders/${uuid}/payments/capture|orders/${uuid}/returns|returns/${uuid}/photos`,
+    `orders/${uuid}/cancel|orders/${uuid}/payments/(paypal|stripe|triple-a)|orders/${uuid}/payments/capture|orders/${uuid}/returns|returns/${uuid}/photos`,
   ],
   ["GET", "account/overview|account/orders|account/addresses|account/wishlist"],
   ["POST", `account/addresses|account/orders/${uuid}/claim`],
@@ -186,6 +187,7 @@ export async function bridge(req: NextRequest, parts: string[]) {
     if (type.includes("application/json")) {
       const j = await upstream.json();
       if (upstream.ok) {
+        if (write && /^admin\/(settings|media|resources\/(categories|collections|pages|faqs|size-guides))(?:\/|$)/.test(path)) revalidateTag("store-content", { expire: 0 });
         if (
           path === "cart" &&
           req.method === "POST" &&

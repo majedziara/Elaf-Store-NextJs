@@ -9,5 +9,5 @@ export function paymentPresentation(status: string | undefined, canceledCheckout
     const title = status === "expired" ? "The payment window has expired" : status === "canceled" ? "Your order has been canceled" : "Your payment was not completed";
     return { confirmed: false, title, message: "Check the current order status and payment details before starting another purchase." };
   }
-  return { confirmed: false, title: canceledCheckout ? "You returned from PayPal" : "Your order is awaiting payment", message: canceledCheckout ? "Returning from PayPal does not cancel the store order. Check its current status before trying again." : "Approval at PayPal and server verification are required. Pending or unknown status is not a payment confirmation." };
+  return { confirmed: false, title: canceledCheckout ? "You returned from checkout" : "Your order is awaiting payment", message: canceledCheckout ? "Returning from the payment provider does not cancel the store order. Check its current status before trying again." : "Payment with your selected provider and server verification are required. Pending or unknown status is not a payment confirmation." };
 }

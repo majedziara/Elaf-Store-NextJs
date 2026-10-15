@@ -124,6 +124,7 @@ export function HomeHero() {
                 src="/images/editorial-hero.png"
                 alt="Editorial portrait in warm afternoon light"
                 priority
+                sizes="(max-width: 999px) calc(100vw - 32px), 50vw"
               />
             </motion.div>
           </div>
@@ -131,6 +132,7 @@ export function HomeHero() {
             <Photo
               src="/images/editorial-detail.png"
               alt="A close view of soft fabric texture"
+              sizes="150px"
             />
           </div>
         </div>

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { User } from "./types";
@@ -59,7 +60,7 @@ export function unseal<T>(value: string | undefined): T | null {
     return null;
   }
 }
-export async function serverGet<T>(
+export const serverGet = cache(async function serverGet<T>(
   path: string,
   authenticated = false,
 ): Promise<T> {
@@ -80,9 +81,10 @@ export async function serverGet<T>(
         .join("; "),
     );
   }
+  const publicContent = !authenticated && /^(settings|categories|collections|faqs|pages\/[a-z0-9-]+)$/.test(path);
   const res = await fetch(cfg.base + "/api/v1/" + path, {
     headers: h,
-    cache: "no-store",
+    ...(publicContent ? { cache: "force-cache" as const, next: { revalidate: 60, tags: ["store-content"] } } : { cache: "no-store" as const }),
     redirect: "error",
     signal: AbortSignal.timeout(20000),
   });
@@ -96,7 +98,7 @@ export async function serverGet<T>(
       { status: res.status },
     );
   return (await res.json()) as T;
-}
+});
 export async function serverUser(): Promise<User | null> {
   try {
     return (await serverGet<{ data: User }>("auth/me", true)).data;

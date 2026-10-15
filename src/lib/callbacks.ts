@@ -51,17 +51,17 @@ function rememberOrder(
   const now = Date.now();
   const grants: OrderGrant[] = Array.isArray(previous)
     ? previous.filter(
-        (grant): grant is OrderGrant =>
-          grant &&
-          typeof grant === "object" &&
-          typeof grant.uuid === "string" &&
-          orderUUID.test(grant.uuid) &&
-          typeof grant.token === "string" &&
-          accessToken.test(grant.token) &&
-          typeof grant.expires === "number" &&
-          grant.expires > now &&
-          grant.uuid !== uuid,
-      )
+      (grant): grant is OrderGrant =>
+        grant &&
+        typeof grant === "object" &&
+        typeof grant.uuid === "string" &&
+        orderUUID.test(grant.uuid) &&
+        typeof grant.token === "string" &&
+        accessToken.test(grant.token) &&
+        typeof grant.expires === "number" &&
+        grant.expires > now &&
+        grant.uuid !== uuid,
+    )
     : [];
   const cfg = config();
   response.cookies.set(
@@ -76,20 +76,21 @@ function rememberOrder(
     },
   );
 }
-export async function paypalCallback(
+async function verifyPaymentCallback(
   request: NextRequest,
   action: CallbackAction,
+  gateway: "paypal" | "stripe" | "triple-a",
 ) {
   const state = singleParameter(request, "state", 4096);
   const token = singleParameter(request, "token", 120);
   if (
     !state ||
-    (action === "return" && !token) ||
+    (gateway === "paypal" && action === "return" && !token) ||
     (request.nextUrl.searchParams.has("token") && !token)
   )
     return redirect("/checkout/failed", { problem: "invalid-link" });
   const cfg = config();
-  const target = new URL(`/api/paypal/${action}`, cfg.base);
+  const target = new URL(gateway === "paypal" ? `/api/paypal/${action}` : `/api/payments/${gateway}/${action}`, cfg.base);
   target.searchParams.set("state", state);
   if (token) target.searchParams.set("token", token);
   try {
@@ -160,4 +161,14 @@ export function mailLink(request: NextRequest, page: LinkPage) {
       { status: 400, headers: privateHeaders },
     );
   return redirect(`/${page}`, { token, ...(email ? { email } : {}) });
+}
+
+export async function paymentCallback(request: NextRequest, gateway: string, action: string) {
+  if (!["stripe", "triple-a"].includes(gateway) || !["return", "cancel"].includes(action))
+    return NextResponse.json({ message: "Not found." }, { status: 404, headers: privateHeaders });
+  return verifyPaymentCallback(request, action as CallbackAction, gateway as "stripe" | "triple-a");
+}
+
+export async function paypalCallback(request: NextRequest, action: CallbackAction) {
+  return verifyPaymentCallback(request, action, "paypal");
 }

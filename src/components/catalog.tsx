@@ -290,6 +290,7 @@ export function ProductView({ product }: { product: Product }) {
             src={product.images[image]?.url}
             alt={product.images[image]?.alt || product.name}
             priority
+            sizes="(max-width: 999px) calc(100vw - 32px), 50vw"
             className="main-product-photo"
           />
           <div className="thumbnails">

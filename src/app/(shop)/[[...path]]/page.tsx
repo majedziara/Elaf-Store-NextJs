@@ -1,24 +1,26 @@
 import type { Metadata } from "next";
+import { publicPages, privatePath, pageMetadata, productMetadata, productSchema, breadcrumbSchema, jsonLd, plainDescription } from "@/lib/seo";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { serverGet, serverUser } from "@/lib/server";
 import type { Product, PageData, Row } from "@/lib/types";
-import { Home, ContentPage, FAQ, Contact, SizeFit } from "@/components/content";
+import { Home } from "@/components/home";
+import { ContentPage, FAQ, Contact, SizeFit } from "@/components/content";
 import { CatalogView, ProductView } from "@/components/catalog";
-import { AuthView } from "@/components/auth";
+import { AuthView } from "@/components/shop-views";
 import { authTitles } from "@/lib/navigation";
 import {
   BagView,
   CheckoutView,
   PaymentView,
   GuestLookup,
-} from "@/components/checkout";
+} from "@/components/shop-views";
 import {
   AccountView,
   OrderDetails,
   ReturnCreate,
   ReturnDetails,
-} from "@/components/account";
+} from "@/components/shop-views";
 import { Empty } from "@/components/ui";
 type Props = {
   params: Promise<{ path?: string[] }>;
@@ -60,54 +62,50 @@ const titles: Record<string, string> = {
   "size-fit": "Size & fit",
   "guest-order": "Guest order access",
 };
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const paths = (await params).path || [],
-    path = paths.join("/");
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const paths = (await params).path || [];
+  const path = paths.join("/");
+  const filters = query(await searchParams);
   if (paths[0] === "products" && paths.length === 2) {
     try {
-      const p = (
-        await serverGet<{ data: Product }>(
-          "products/" + encodeURIComponent(paths[1]),
-        )
-      ).data;
-      return {
-        title: p.seo_title || p.name,
-        description:
-          p.seo_description || p.description?.slice(0, 155) || undefined,
-        alternates: { canonical: "/products/" + p.slug },
-        openGraph: {
-          title: p.name,
-          images: p.images[0]
-            ? [{ url: p.images[0].url, alt: p.images[0].alt || p.name }]
-            : undefined,
-        },
-      };
+      return productMetadata((await serverGet<{ data: Product }>("products/" + encodeURIComponent(paths[1]))).data);
     } catch {
-      return { title: "Product" };
+      return { title: "Product unavailable", robots: { index: false, follow: false } };
     }
   }
-  const privatePage =
-    (["account", "orders", "checkout", "returns"].includes(paths[0]) &&
-      (paths[0] !== "returns" || paths.length > 1)) ||
-    Object.hasOwn(authTitles, path) ||
-    path === "guest-order";
-  return {
-    title: titles[path] || authTitles[path] || "Nella & Vale",
-    ...(privatePage
-      ? { robots: { index: false, follow: false } }
-      : { alternates: { canonical: path ? "/" + path : "/" } }),
-  };
+  if (privatePath("/" + path) || path === "search" || !Object.hasOwn(publicPages, path)) {
+    return pageMetadata("/" + path, titles[path] || authTitles[path] || "Page unavailable", "", false);
+  }
+  const page = publicPages[path];
+  const listing = ["clothing", "intimates", "new-arrivals"].includes(path);
+  const filtered = listing && Object.entries(filters).some(([key, value]) => {
+    if (key === "category" && ["clothing", "intimates"].includes(path) && value === path) return false;
+    return ["q", "category", "collection", "color", "size", "min_cents", "max_cents", "in_stock", "sort"].includes(key);
+  });
+  const pageNumber = Math.max(1, Math.min(100000, Number(filters.page) || 1));
+  const canonical = "/" + path + (listing && pageNumber > 1 ? "?page=" + Math.floor(pageNumber) : "");
+  if (["about", "privacy", "terms", "shipping", "returns"].includes(path)) {
+    const data = await content(path);
+    if (data) return pageMetadata(canonical, strTitle(data.seo_title, strTitle(data.title, page.title)), plainDescription(data.seo_description || data.description, page.description));
+    if (path !== "about") {
+      const settings = (await serverGet<{ data: Row }>("settings")).data;
+      const policy = path === "shipping" ? settings.shipping_policy : path === "returns" ? settings.return_policy : null;
+      if (!policy) return pageMetadata(canonical, page.title, page.description, false);
+    }
+  }
+  if (path === "faq" && !(await serverGet<{ data: Row[] }>("faqs")).data.length) return pageMetadata(canonical, page.title, page.description, false);
+  return pageMetadata(canonical, page.title + (listing && pageNumber > 1 ? " — Page " + Math.floor(pageNumber) : ""), page.description, !filtered);
+}
+function strTitle(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 export default async function Page({ params, searchParams }: Props) {
   const paths = (await params).path || [],
     path = paths.join("/"),
     q = query(await searchParams);
   if (!path) {
-    const [products, home] = await Promise.all([
-      serverGet<PageData<Product>>("products?per_page=8"),
-      content("home"),
-    ]);
-    return <Home products={products.data} home={home} />;
+    const products = serverGet<PageData<Product>>("products?per_page=8").then(result => result.data);
+    return <Home products={products} home={content("home")} />;
   }
   if (["clothing", "intimates", "new-arrivals", "search"].includes(path)) {
     const filters = new URLSearchParams();
@@ -160,25 +158,10 @@ export default async function Page({ params, searchParams }: Props) {
       throw e;
     }
     const nonce = (await headers()).get("x-nonce") || undefined;
-    const json = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "Product",
-      name: p.name,
-      description: p.description || undefined,
-      image: p.images.map((i) => i.url),
-      offers: p.variants.length
-        ? {
-            "@type": "AggregateOffer",
-            priceCurrency: "USD",
-            lowPrice: Math.min(...p.variants.map((v) => v.price_cents)) / 100,
-            highPrice: Math.max(...p.variants.map((v) => v.price_cents)) / 100,
-            offerCount: p.variants.length,
-          }
-        : undefined,
-    }).replace(
-      /[<>&\u2028\u2029]/g,
-      (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
-    );
+    const json = jsonLd([
+      productSchema(p),
+      breadcrumbSchema([{ name: "Home", path: "/" }, { name: p.category?.name || "New arrivals", path: p.category && ["clothing", "intimates"].includes(p.category.slug) ? "/" + p.category.slug : "/new-arrivals" }, { name: p.name, path: "/products/" + p.slug }]),
+    ]);
     return (
       <>
         <script
@@ -209,6 +192,7 @@ export default async function Page({ params, searchParams }: Props) {
     return (
       <PaymentView
         orderUUID={q.order || ""}
+        initialGateway={q.gateway || ""}
         mode={q.returned === "cancel" || paths[1] === "canceled" ? "cancel" : paths[1]}
       />
     );
